@@ -10,18 +10,29 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "import": "./dist/cli.js"
     }
+  },
+  "bin": {
+    "natskill-skills": "./dist/cli.js"
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "scripts/postinstall.cjs"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "postinstall": "node ./scripts/postinstall.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "smoke": "bun run scripts/smoke.ts"
+    "smoke": "bun run scripts/smoke.ts",
+    "install-skills": "bun run src/cli.ts install"
   },
   "devDependencies": {
+    "@types/node": "^24.10.1",
     "typescript": "^5.9.3"
   }
 }

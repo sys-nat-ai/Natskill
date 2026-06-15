@@ -14,6 +14,7 @@ export type SkillEntry = {
   source?: string;
   sourceInfo: SkillSource;
   status: SkillStatus;
+  installable: boolean;
   notes?: string;
 };
 
@@ -32,6 +33,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes: "User-provided ECC repository pinned to HEAD on verification date.",
   },
   {
@@ -46,6 +48,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes:
       "User-provided Andrej Karpathy skills repository pinned to HEAD on verification date.",
   },
@@ -61,6 +64,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes: "User-provided gstack repository pinned to HEAD on verification date.",
   },
   {
@@ -75,6 +79,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes: "User-provided caveman repository pinned to HEAD on verification date.",
   },
   {
@@ -89,6 +94,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes:
       "User-provided get-shit-done repository pinned to HEAD on verification date.",
   },
@@ -108,6 +114,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes:
       "User-provided repository pinned to HEAD; original requested spelling is preserved as an alias.",
   },
@@ -123,6 +130,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes:
       "Official GitHub Spec Kit repository for spec-driven development workflows.",
   },
@@ -138,6 +146,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes: "Official mem0 repository for AI agent memory.",
   },
   {
@@ -156,6 +165,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes:
       "Curated Claude Code list; the original requested misspelling is preserved as an alias.",
   },
@@ -171,6 +181,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: true,
     notes: "Official OpenAI Codex CLI repository.",
   },
   {
@@ -184,6 +195,7 @@ export const skills: readonly SkillEntry[] = [
       verifiedOn,
     },
     status: "resolved",
+    installable: false,
     notes:
       "User provided the official Obsidian GitHub organization rather than a single repository, so no commit ref is pinned.",
   },
@@ -198,6 +210,8 @@ export const resolvedSkills = skills.filter(
 export const unresolvedSkills = skills.filter(
   (skill) => skill.status === "unresolved",
 );
+
+export const installableSkills = skills.filter((skill) => skill.installable);
 
 export function getSkill(idOrAlias: string): SkillEntry | undefined {
   const normalized = normalizeSkillKey(idOrAlias);

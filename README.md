@@ -5,6 +5,9 @@ Private Bun package that exposes a typed registry of agent skill sources.
 The package exports the skill list, source URLs, pinned refs, aliases, and helper
 filters for Codex/Claude-oriented skill tooling.
 
+When this package is installed into another project, it also installs the
+cloneable skill repositories into that project's `.natskill/skills` folder.
+
 ## Install This Package
 
 ### From This Folder
@@ -23,6 +26,13 @@ Then install it into another project from the local path:
 ```sh
 cd /path/to/your-project
 bun add /path/to/Natskill
+```
+
+The install step runs the package `postinstall` script and clones the skills
+into:
+
+```text
+.natskill/skills/
 ```
 
 On Windows, that may look like:
@@ -50,6 +60,27 @@ Then install it into another project:
 cd /path/to/your-project
 bun add "git+https://github.com/YOUR_USERNAME/Natskill.git"
 ```
+
+After install, the consuming project will contain:
+
+```text
+.natskill/
+  skills/
+    ecc/
+    karpathy-skills/
+    gstack/
+    caveman/
+    get-shit-done/
+    understand-anything/
+    spec-kit/
+    mem0/
+    awesome-claude-code/
+    codex/
+```
+
+`obsidian` is included in the registry, but it is not auto-cloned because the
+source is the `https://github.com/obsidianmd` organization instead of a single
+repository.
 
 If the repo is private, authenticate with GitHub first:
 
@@ -93,6 +124,38 @@ bun run smoke
 bun run build
 ```
 
+## Install Skills Manually
+
+If the automatic `postinstall` step was skipped, run:
+
+```sh
+bunx natskill-skills install
+```
+
+Or from inside this package:
+
+```sh
+bun run install-skills
+```
+
+Install into a custom folder:
+
+```sh
+natskill-skills install --target-dir ./vendor/natskill-skills
+```
+
+Replace existing skill folders:
+
+```sh
+natskill-skills install --force
+```
+
+Preview without cloning:
+
+```sh
+natskill-skills install --dry-run
+```
+
 ## Paste This Prompt Into Codex Or Claude
 
 Use this prompt from inside the project where you want to install the package:
@@ -109,17 +172,20 @@ Requirements:
 2. Install @natskill/skills from the local path or Git URL.
 3. Do not add @natskill/skills as a dependency of the Natskill package itself.
 4. Do not commit or track node_modules.
-5. If a .gitignore exists, ensure node_modules/ is ignored. If it does not exist, create one with node_modules/.
-6. Add a small import smoke test that imports:
+5. If a .gitignore exists, ensure node_modules/ and .natskill/ are ignored. If it does not exist, create one with both entries.
+6. Confirm the install created .natskill/skills in this project.
+7. If .natskill/skills was not created, run:
+   bunx natskill-skills install
+8. Add a small import smoke test that imports:
    import { skills, getSkill, resolvedSkills, unresolvedSkills } from "@natskill/skills";
-7. Run the install command and the smoke test.
-8. Report the final install command used, the package manager used, and the smoke test result.
+9. Run the install command and the smoke test.
+10. Report the final install command used, the package manager used, the skill install folder, and the smoke test result.
 
 Before any delete or update, explicitly highlight what will be deleted or updated.
 ```
 
 ## Notes
 
-This package is intentionally private. It is a registry package, not an
-automatic skill installer. It does not clone or install the listed skill
-repositories by itself.
+This package is intentionally private. The installer clones each installable
+skill repository at its pinned commit ref. Existing skill folders are skipped
+unless `--force` is used.
