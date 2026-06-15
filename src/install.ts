@@ -11,11 +11,18 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installableSkills, skills, type SkillEntry } from "./skills.js";
 
+export type InstallEvent =
+  | { type: "clone-start"; id: string; index: number; total: number }
+  | { type: "clone-done"; id: string; index: number; total: number }
+  | { type: "copy"; id: string; index: number; total: number }
+  | { type: "skip"; id: string; reason: "exists" | "not-installable" };
+
 export type InstallOptions = {
   targetDir?: string;
   force?: boolean;
   dryRun?: boolean;
   fromPostinstall?: boolean;
+  onEvent?: (event: InstallEvent) => void;
 };
 
 export type InstallResult = {
@@ -42,12 +49,17 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
 
   const installed: string[] = [];
   const skipped: string[] = [];
+  const emit = options.onEvent ?? (() => {});
+  const total = installableSkills.length;
 
+  let index = 0;
   for (const skill of installableSkills) {
+    index += 1;
     const destination = join(targetDir, skill.id);
 
     if (existsSync(destination)) {
       if (!options.force) {
+        emit({ type: "skip", id: skill.id, reason: "exists" });
         skipped.push(skill.id);
         continue;
       }
@@ -59,9 +71,11 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
 
     if (!isCloneableGitSkill(skill)) {
       if (isInstallableLocalSkill(skill)) {
+        emit({ type: "copy", id: skill.id, index, total });
         installLocalSkill(skill, destination, options.dryRun);
         installed.push(skill.id);
       } else {
+        emit({ type: "skip", id: skill.id, reason: "not-installable" });
         skipped.push(skill.id);
       }
       continue;
@@ -72,9 +86,11 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
       continue;
     }
 
+    emit({ type: "clone-start", id: skill.id, index, total });
     runGit(["clone", "--no-checkout", skill.sourceInfo.url, destination]);
     runGit(["-C", destination, "checkout", skill.sourceInfo.ref]);
     writeInstallMetadata(destination, skill);
+    emit({ type: "clone-done", id: skill.id, index, total });
     installed.push(skill.id);
   }
 
@@ -159,9 +175,12 @@ function installLocalSkill(
 }
 
 function runGit(args: string[]): void {
-  const result = spawnSync("git", args, { stdio: "inherit" });
+  const result = spawnSync("git", args, { encoding: "utf8" });
   if (result.status !== 0) {
-    throw new Error(`git ${args.join(" ")} failed`);
+    const detail = (result.stderr || result.stdout || "").trim();
+    throw new Error(
+      `git ${args.join(" ")} failed${detail ? `\n${detail}` : ""}`,
+    );
   }
 }
 

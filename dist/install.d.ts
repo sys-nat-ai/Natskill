@@ -1,8 +1,29 @@
+export type InstallEvent = {
+    type: "clone-start";
+    id: string;
+    index: number;
+    total: number;
+} | {
+    type: "clone-done";
+    id: string;
+    index: number;
+    total: number;
+} | {
+    type: "copy";
+    id: string;
+    index: number;
+    total: number;
+} | {
+    type: "skip";
+    id: string;
+    reason: "exists" | "not-installable";
+};
 export type InstallOptions = {
     targetDir?: string;
     force?: boolean;
     dryRun?: boolean;
     fromPostinstall?: boolean;
+    onEvent?: (event: InstallEvent) => void;
 };
 export type InstallResult = {
     installed: string[];

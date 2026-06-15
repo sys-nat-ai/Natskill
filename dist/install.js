@@ -16,10 +16,15 @@ export function installSkills(options = {}) {
     }
     const installed = [];
     const skipped = [];
+    const emit = options.onEvent ?? (() => { });
+    const total = installableSkills.length;
+    let index = 0;
     for (const skill of installableSkills) {
+        index += 1;
         const destination = join(targetDir, skill.id);
         if (existsSync(destination)) {
             if (!options.force) {
+                emit({ type: "skip", id: skill.id, reason: "exists" });
                 skipped.push(skill.id);
                 continue;
             }
@@ -29,10 +34,12 @@ export function installSkills(options = {}) {
         }
         if (!isCloneableGitSkill(skill)) {
             if (isInstallableLocalSkill(skill)) {
+                emit({ type: "copy", id: skill.id, index, total });
                 installLocalSkill(skill, destination, options.dryRun);
                 installed.push(skill.id);
             }
             else {
+                emit({ type: "skip", id: skill.id, reason: "not-installable" });
                 skipped.push(skill.id);
             }
             continue;
@@ -41,9 +48,11 @@ export function installSkills(options = {}) {
             installed.push(skill.id);
             continue;
         }
+        emit({ type: "clone-start", id: skill.id, index, total });
         runGit(["clone", "--no-checkout", skill.sourceInfo.url, destination]);
         runGit(["-C", destination, "checkout", skill.sourceInfo.ref]);
         writeInstallMetadata(destination, skill);
+        emit({ type: "clone-done", id: skill.id, index, total });
         installed.push(skill.id);
     }
     const nonInstallable = skills.filter((skill) => !skill.installable);
@@ -99,9 +108,10 @@ function installLocalSkill(skill, destination, dryRun = false) {
     writeInstallMetadata(destination, skill);
 }
 function runGit(args) {
-    const result = spawnSync("git", args, { stdio: "inherit" });
+    const result = spawnSync("git", args, { encoding: "utf8" });
     if (result.status !== 0) {
-        throw new Error(`git ${args.join(" ")} failed`);
+        const detail = (result.stderr || result.stdout || "").trim();
+        throw new Error(`git ${args.join(" ")} failed${detail ? `\n${detail}` : ""}`);
     }
 }
 function writeInstallMetadata(destination, skill) {

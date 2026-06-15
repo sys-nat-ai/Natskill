@@ -37,6 +37,18 @@ into:
 .natskill/skills/
 ```
 
+> **Bun blocks postinstall scripts by default.** If you see
+> `Blocked 1 postinstall`, the skills were not cloned yet. The recommended
+> path is to run the installer yourself — it shows a confirmation prompt and
+> live progress:
+>
+> ```sh
+> bunx natskill-skills install
+> ```
+>
+> Alternatively, allow the blocked script with `bun pm trust @natskill/skills`
+> (this runs silently with no progress output).
+
 On Windows, that may look like:
 
 ```powershell
@@ -152,10 +164,28 @@ bun run build
 
 ## Install Skills Manually
 
-If the automatic `postinstall` step was skipped, run:
+If the automatic `postinstall` step was skipped (e.g. Bun blocked it), run:
 
 ```sh
 bunx natskill-skills install
+```
+
+In an interactive terminal this asks for confirmation and then shows a live
+spinner and a per-skill counter while each pinned repository is cloned:
+
+```text
+[natskill] About to install 11 skills by cloning their pinned repositories.
+Proceed? (y/N) y
+✓ [1/11] natskill-orchestrator (local)
+/ [2/11] cloning ecc… 3s
+✓ [2/11] ecc (4s)
+· skipped obsidian (not installable)
+```
+
+Skip the prompt (CI or scripted use) with `--yes`:
+
+```sh
+bunx natskill-skills install --yes
 ```
 
 Or from inside this package:
@@ -180,6 +210,12 @@ Preview without cloning:
 
 ```sh
 natskill-skills install --dry-run
+```
+
+Skip the confirmation prompt:
+
+```sh
+natskill-skills install --yes
 ```
 
 ## Paste This Prompt Into Codex Or Claude
