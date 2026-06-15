@@ -1,0 +1,27 @@
+{
+  "name": "@natskill/skills",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Private typed registry for NatSkill agent skills.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "smoke": "bun run scripts/smoke.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
