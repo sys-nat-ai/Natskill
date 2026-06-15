@@ -1,9 +1,12 @@
 {
-  "name": "@natskill/skills",
+  "name": "natskill",
   "version": "0.1.0",
-  "private": true,
   "type": "module",
-  "description": "Private typed registry for NatSkill agent skills.",
+  "description": "Typed registry and installer for NatSkill agent skills.",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -17,6 +20,7 @@
     }
   },
   "bin": {
+    "natskill": "./dist/cli.js",
     "natskill-skills": "./dist/cli.js"
   },
   "files": [
@@ -27,6 +31,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "tsc -p tsconfig.json",
     "postinstall": "node ./scripts/postinstall.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "bun run scripts/smoke.ts",

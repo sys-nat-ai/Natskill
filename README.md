@@ -1,6 +1,7 @@
-# NatSkill Skills
+# NatSkill
 
-Private Bun package that exposes a typed registry of agent skill sources.
+Bun package that exposes a typed registry of agent skill sources and installs
+them into a project.
 
 The package exports the skill list, source URLs, pinned refs, aliases, and helper
 filters for Codex/Claude-oriented skill tooling.
@@ -9,6 +10,18 @@ When this package is installed into another project, it also installs the
 cloneable skill repositories into that project's `.natskill/skills` folder.
 It also installs a packaged local `natskill-orchestrator` skill that helps an
 agent choose which NatSkill skill should handle a user command.
+
+## Quick Start
+
+Bootstrap a project's skills with a single command — no prior install needed:
+
+```sh
+bunx natskill                          # once published to npm
+bunx github:sys-nat-ai/Natskill        # straight from GitHub, no npm needed
+```
+
+This asks for confirmation, then clones every pinned skill repo into
+`./.natskill/skills` with live progress. Add `--yes` to skip the prompt.
 
 ## Install This Package
 
@@ -43,10 +56,10 @@ into:
 > live progress:
 >
 > ```sh
-> bunx natskill-skills install
+> bunx natskill
 > ```
 >
-> Alternatively, allow the blocked script with `bun pm trust @natskill/skills`
+> Alternatively, allow the blocked script with `bun pm trust natskill`
 > (this runs silently with no progress output).
 
 On Windows, that may look like:
@@ -111,7 +124,7 @@ import {
   resolvedSkills,
   skills,
   unresolvedSkills,
-} from "@natskill/skills";
+} from "natskill";
 
 const specKit = getSkill("spec-kit");
 
@@ -167,7 +180,7 @@ bun run build
 If the automatic `postinstall` step was skipped (e.g. Bun blocked it), run:
 
 ```sh
-bunx natskill-skills install
+bunx natskill
 ```
 
 In an interactive terminal this asks for confirmation and then shows a live
@@ -185,7 +198,7 @@ Proceed? (y/N) y
 Skip the prompt (CI or scripted use) with `--yes`:
 
 ```sh
-bunx natskill-skills install --yes
+bunx natskill --yes
 ```
 
 Or from inside this package:
@@ -197,25 +210,25 @@ bun run install-skills
 Install into a custom folder:
 
 ```sh
-natskill-skills install --target-dir ./vendor/natskill-skills
+natskill install --target-dir ./vendor/natskill-skills
 ```
 
 Replace existing skill folders:
 
 ```sh
-natskill-skills install --force
+natskill install --force
 ```
 
 Preview without cloning:
 
 ```sh
-natskill-skills install --dry-run
+natskill install --dry-run
 ```
 
 Skip the confirmation prompt:
 
 ```sh
-natskill-skills install --yes
+natskill install --yes
 ```
 
 ## Paste This Prompt Into Codex Or Claude
@@ -223,31 +236,46 @@ natskill-skills install --yes
 Use this prompt from inside the project where you want to install the package:
 
 ```text
-Install the private NatSkill package into this project.
+Install the NatSkill package into this project.
 
 Package source:
+- Published: bunx natskill
+- From GitHub: bunx github:sys-nat-ai/Natskill
 - If this machine has the package locally, use: C:\Users\Nat Pisco\Desktop\Projects\Natskill
-- Otherwise use the private Git repository URL I provide.
 
 Requirements:
 1. Detect whether this project uses Bun or npm. Prefer Bun if both are available.
-2. Install @natskill/skills from the local path or Git URL.
-3. Do not add @natskill/skills as a dependency of the Natskill package itself.
+2. Install natskill from npm, the GitHub URL, or the local path.
+3. Do not add natskill as a dependency of the Natskill package itself.
 4. Do not commit or track node_modules.
 5. If a .gitignore exists, ensure node_modules/ and .natskill/ are ignored. If it does not exist, create one with both entries.
 6. Confirm the install created .natskill/skills in this project, including .natskill/skills/natskill-orchestrator/SKILL.md.
 7. If .natskill/skills was not created, run:
-   bunx natskill-skills install
+   bunx natskill
 8. Add a small import smoke test that imports:
-   import { skills, getSkill, resolvedSkills, unresolvedSkills } from "@natskill/skills";
+   import { skills, getSkill, resolvedSkills, unresolvedSkills } from "natskill";
 9. Run the install command and the smoke test.
 10. Report the final install command used, the package manager used, the skill install folder, and the smoke test result.
 
 Before any delete or update, explicitly highlight what will be deleted or updated.
 ```
 
+## Publishing To npm
+
+The package is published publicly as `natskill`. To cut a release:
+
+```sh
+bun run build          # prepublishOnly also builds, but verify first
+bun run smoke          # sanity-check the registry exports
+npm login              # one-time, as the npm account that owns `natskill`
+npm publish            # publishConfig.access is already "public"
+```
+
+Bump `version` in `package.json` before each publish (npm rejects republishing
+the same version). After publishing, `bunx natskill` works from anywhere.
+
 ## Notes
 
-This package is intentionally private. The installer clones each installable
-skill repository at its pinned commit ref. Existing skill folders are skipped
-unless `--force` is used.
+The installer clones each installable skill repository at its pinned commit ref.
+Existing skill folders are skipped unless `--force` is used. The package itself
+is public on npm; the cloned skill repos retain their own upstream licenses.

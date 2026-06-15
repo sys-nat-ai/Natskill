@@ -164,10 +164,12 @@ function parseArgs(argv) {
 }
 function printHelp() {
     console.log(`Usage:
-  natskill-skills install [--target-dir .natskill/skills] [--force] [--dry-run] [--yes]
+  natskill [install] [--target-dir .natskill/skills] [--force] [--dry-run] [--yes]
+
+Running with no command (e.g. \`bunx natskill\`) bootstraps an install.
 
 Commands:
-  install    Clone all installable NatSkill skill repositories.
+  install    Clone all installable NatSkill skill repositories (default).
 
 Options:
   --target-dir <path>  Install skills into this directory.
