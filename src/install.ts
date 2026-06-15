@@ -3,11 +3,14 @@ import {
   cpSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installableSkills, skills, type SkillEntry } from "./skills.js";
 
@@ -15,13 +18,18 @@ export type InstallEvent =
   | { type: "clone-start"; id: string; index: number; total: number }
   | { type: "clone-done"; id: string; index: number; total: number }
   | { type: "copy"; id: string; index: number; total: number }
-  | { type: "skip"; id: string; reason: "exists" | "not-installable" };
+  | { type: "skip"; id: string; reason: "exists" | "not-installable" }
+  | { type: "register-start" }
+  | { type: "registered"; name: string; from: string }
+  | { type: "register-done"; count: number; dir: string };
 
 export type InstallOptions = {
   targetDir?: string;
   force?: boolean;
   dryRun?: boolean;
   fromPostinstall?: boolean;
+  /** Register discovered SKILL.md skills into the project's .claude/skills. Default true. */
+  register?: boolean;
   onEvent?: (event: InstallEvent) => void;
 };
 
@@ -29,6 +37,10 @@ export type InstallResult = {
   installed: string[];
   skipped: string[];
   targetDir: string;
+  /** Skill names registered into .claude/skills for Claude Code. */
+  registered: string[];
+  /** Absolute path to the .claude/skills directory used, when registration ran. */
+  claudeSkillsDir?: string;
 };
 
 const packageRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -37,8 +49,13 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
   const targetDir = getTargetDir(options);
 
   if (options.fromPostinstall && isSelfInstallContext()) {
-    console.log("[natskill] Skipping skill install inside @natskill/skills.");
-    return { installed: [], skipped: skills.map((skill) => skill.id), targetDir };
+    console.log("[natskill] Skipping skill install inside the natskill package.");
+    return {
+      installed: [],
+      skipped: skills.map((skill) => skill.id),
+      targetDir,
+      registered: [],
+    };
   }
 
   assertGitAvailable();
@@ -99,7 +116,179 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
     skipped.push(skill.id);
   }
 
-  return { installed, skipped, targetDir };
+  let registered: string[] = [];
+  let claudeSkillsDir: string | undefined;
+
+  if (!options.dryRun && options.register !== false) {
+    claudeSkillsDir = join(getProjectRoot(options), ".claude", "skills");
+    registered = registerClaudeSkills(targetDir, claudeSkillsDir, emit);
+  }
+
+  return { installed, skipped, targetDir, registered, claudeSkillsDir };
+}
+
+function getProjectRoot(options: InstallOptions): string {
+  if (options.fromPostinstall && process.env.INIT_CWD) {
+    return resolve(process.env.INIT_CWD);
+  }
+
+  return process.cwd();
+}
+
+// Skill-root directories to try, in priority order, within a cloned repo.
+const SKILL_ROOT_CANDIDATES = [
+  ".claude/skills",
+  "skills",
+  ".codex/skills",
+  ".agents/skills",
+];
+
+const SKILL_SCAN_MAX_DEPTH = 3;
+const SKILL_SCAN_IGNORE = new Set([".git", "node_modules", ".github"]);
+
+/**
+ * Links every distinct SKILL.md-bearing folder from the installed repos into
+ * `.claude/skills` so Claude Code discovers them. One canonical skill-root is
+ * chosen per repo to avoid the mirror/translation copies many repos ship.
+ */
+function registerClaudeSkills(
+  targetDir: string,
+  claudeSkillsDir: string,
+  emit: (event: InstallEvent) => void,
+): string[] {
+  emit({ type: "register-start" });
+  mkdirSync(claudeSkillsDir, { recursive: true });
+
+  const registered: string[] = [];
+  const usedNames = new Set<string>();
+
+  for (const skill of installableSkills) {
+    const repoDir = join(targetDir, skill.id);
+    if (!existsSync(repoDir)) {
+      continue;
+    }
+
+    const root = findRepoSkillRoot(repoDir);
+    if (!root) {
+      continue;
+    }
+
+    for (const skillDir of findSkillDirs(root, SKILL_SCAN_MAX_DEPTH)) {
+      let name = sanitizeName(readSkillName(skillDir) ?? basename(skillDir));
+      if (!name) {
+        continue;
+      }
+      if (usedNames.has(name)) {
+        name = `${skill.id}-${name}`;
+      }
+      if (usedNames.has(name)) {
+        continue;
+      }
+
+      const destination = join(claudeSkillsDir, name);
+      if (existsSync(destination)) {
+        // Never clobber a skill the user already has.
+        usedNames.add(name);
+        continue;
+      }
+
+      linkOrCopy(skillDir, destination);
+      usedNames.add(name);
+      registered.push(name);
+      emit({ type: "registered", name, from: skill.id });
+    }
+  }
+
+  emit({ type: "register-done", count: registered.length, dir: claudeSkillsDir });
+  return registered;
+}
+
+function findRepoSkillRoot(repoDir: string): string | undefined {
+  for (const candidate of SKILL_ROOT_CANDIDATES) {
+    const candidatePath = join(repoDir, candidate);
+    if (existsSync(candidatePath) && statSync(candidatePath).isDirectory()) {
+      return candidatePath;
+    }
+  }
+
+  // Skills may sit as top-level folders in the repo root (e.g. gstack).
+  const hasTopLevelSkill = readdirSync(repoDir, { withFileTypes: true }).some(
+    (entry) =>
+      entry.isDirectory() &&
+      !SKILL_SCAN_IGNORE.has(entry.name) &&
+      existsSync(join(repoDir, entry.name, "SKILL.md")),
+  );
+  if (hasTopLevelSkill) {
+    return repoDir;
+  }
+
+  // The repo itself may be a single skill.
+  if (existsSync(join(repoDir, "SKILL.md"))) {
+    return repoDir;
+  }
+
+  return undefined;
+}
+
+/** Collects directories that directly contain a SKILL.md, treating each as a leaf. */
+function findSkillDirs(root: string, maxDepth: number): string[] {
+  const found: string[] = [];
+
+  const walk = (dir: string, depth: number): void => {
+    const isSkill = existsSync(join(dir, "SKILL.md"));
+    if (isSkill) {
+      found.push(dir);
+      // A nested skill folder is a leaf. The scan root may itself be a skill
+      // while also containing sub-skills (e.g. gstack), so keep descending
+      // only from depth 0.
+      if (depth > 0) {
+        return;
+      }
+    }
+    if (depth >= maxDepth) {
+      return;
+    }
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || SKILL_SCAN_IGNORE.has(entry.name)) {
+        continue;
+      }
+      walk(join(dir, entry.name), depth + 1);
+    }
+  };
+
+  walk(root, 0);
+  return found;
+}
+
+function readSkillName(skillDir: string): string | undefined {
+  try {
+    const content = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+    const match = content.match(/^\s*name:\s*(.+?)\s*$/m);
+    return match?.[1]?.replace(/^["']|["']$/g, "");
+  } catch {
+    return undefined;
+  }
+}
+
+function sanitizeName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function linkOrCopy(target: string, destination: string): void {
+  const absoluteTarget = resolve(target);
+  try {
+    symlinkSync(
+      absoluteTarget,
+      destination,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch {
+    cpSync(absoluteTarget, destination, { recursive: true });
+  }
 }
 
 function getTargetDir(options: InstallOptions): string {

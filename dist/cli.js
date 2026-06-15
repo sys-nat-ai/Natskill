@@ -31,10 +31,14 @@ async function main() {
             force: args.force,
             dryRun: args.dryRun,
             fromPostinstall: args.fromPostinstall,
+            register: args.register,
             onEvent,
         });
         const action = args.dryRun ? "Would install" : "Installed";
         console.log(`[natskill] ${action} ${result.installed.length} skills into ${result.targetDir}.`);
+        if (result.registered.length > 0 && result.claudeSkillsDir) {
+            console.log(`[natskill] Registered ${result.registered.length} skills for Claude Code in ${result.claudeSkillsDir}.`);
+        }
         if (result.skipped.length > 0) {
             console.log(`[natskill] Skipped: ${result.skipped.join(", ")}`);
         }
@@ -115,6 +119,16 @@ function makeProgressReporter() {
             clearLine();
             const why = event.reason === "exists" ? "already installed" : "not installable";
             console.log(`· skipped ${event.id} (${why})`);
+            return;
+        }
+        if (event.type === "register-start") {
+            clearLine();
+            console.log("Registering skills for Claude Code (.claude/skills)…");
+            return;
+        }
+        if (event.type === "register-done") {
+            clearLine();
+            console.log(`✓ registered ${event.count} skills in ${event.dir}`);
         }
     };
 }
@@ -131,6 +145,7 @@ function parseArgs(argv) {
         dryRun: false,
         fromPostinstall: false,
         yes: false,
+        register: true,
     };
     for (let index = flagStart; index < argv.length; index += 1) {
         const arg = argv[index];
@@ -159,6 +174,10 @@ function parseArgs(argv) {
             parsed.yes = true;
             continue;
         }
+        if (arg === "--no-register") {
+            parsed.register = false;
+            continue;
+        }
     }
     return parsed;
 }
@@ -176,6 +195,7 @@ Options:
   --force              Replace existing skill folders.
   --dry-run            Show what would be installed without cloning.
   --yes, -y            Skip the confirmation prompt (assume yes).
+  --no-register        Do not register skills into .claude/skills.
 
 In an interactive terminal, install asks for confirmation and shows live
 progress while each repository is cloned. Use --yes to skip the prompt

@@ -1,14 +1,19 @@
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
-import { join, resolve } from "node:path";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync, } from "node:fs";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installableSkills, skills } from "./skills.js";
 const packageRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
 export function installSkills(options = {}) {
     const targetDir = getTargetDir(options);
     if (options.fromPostinstall && isSelfInstallContext()) {
-        console.log("[natskill] Skipping skill install inside @natskill/skills.");
-        return { installed: [], skipped: skills.map((skill) => skill.id), targetDir };
+        console.log("[natskill] Skipping skill install inside the natskill package.");
+        return {
+            installed: [],
+            skipped: skills.map((skill) => skill.id),
+            targetDir,
+            registered: [],
+        };
     }
     assertGitAvailable();
     if (!options.dryRun) {
@@ -59,7 +64,146 @@ export function installSkills(options = {}) {
     for (const skill of nonInstallable) {
         skipped.push(skill.id);
     }
-    return { installed, skipped, targetDir };
+    let registered = [];
+    let claudeSkillsDir;
+    if (!options.dryRun && options.register !== false) {
+        claudeSkillsDir = join(getProjectRoot(options), ".claude", "skills");
+        registered = registerClaudeSkills(targetDir, claudeSkillsDir, emit);
+    }
+    return { installed, skipped, targetDir, registered, claudeSkillsDir };
+}
+function getProjectRoot(options) {
+    if (options.fromPostinstall && process.env.INIT_CWD) {
+        return resolve(process.env.INIT_CWD);
+    }
+    return process.cwd();
+}
+// Skill-root directories to try, in priority order, within a cloned repo.
+const SKILL_ROOT_CANDIDATES = [
+    ".claude/skills",
+    "skills",
+    ".codex/skills",
+    ".agents/skills",
+];
+const SKILL_SCAN_MAX_DEPTH = 3;
+const SKILL_SCAN_IGNORE = new Set([".git", "node_modules", ".github"]);
+/**
+ * Links every distinct SKILL.md-bearing folder from the installed repos into
+ * `.claude/skills` so Claude Code discovers them. One canonical skill-root is
+ * chosen per repo to avoid the mirror/translation copies many repos ship.
+ */
+function registerClaudeSkills(targetDir, claudeSkillsDir, emit) {
+    emit({ type: "register-start" });
+    mkdirSync(claudeSkillsDir, { recursive: true });
+    const registered = [];
+    const usedNames = new Set();
+    for (const skill of installableSkills) {
+        const repoDir = join(targetDir, skill.id);
+        if (!existsSync(repoDir)) {
+            continue;
+        }
+        const root = findRepoSkillRoot(repoDir);
+        if (!root) {
+            continue;
+        }
+        for (const skillDir of findSkillDirs(root, SKILL_SCAN_MAX_DEPTH)) {
+            let name = sanitizeName(readSkillName(skillDir) ?? basename(skillDir));
+            if (!name) {
+                continue;
+            }
+            if (usedNames.has(name)) {
+                name = `${skill.id}-${name}`;
+            }
+            if (usedNames.has(name)) {
+                continue;
+            }
+            const destination = join(claudeSkillsDir, name);
+            if (existsSync(destination)) {
+                // Never clobber a skill the user already has.
+                usedNames.add(name);
+                continue;
+            }
+            linkOrCopy(skillDir, destination);
+            usedNames.add(name);
+            registered.push(name);
+            emit({ type: "registered", name, from: skill.id });
+        }
+    }
+    emit({ type: "register-done", count: registered.length, dir: claudeSkillsDir });
+    return registered;
+}
+function findRepoSkillRoot(repoDir) {
+    for (const candidate of SKILL_ROOT_CANDIDATES) {
+        const candidatePath = join(repoDir, candidate);
+        if (existsSync(candidatePath) && statSync(candidatePath).isDirectory()) {
+            return candidatePath;
+        }
+    }
+    // Skills may sit as top-level folders in the repo root (e.g. gstack).
+    const hasTopLevelSkill = readdirSync(repoDir, { withFileTypes: true }).some((entry) => entry.isDirectory() &&
+        !SKILL_SCAN_IGNORE.has(entry.name) &&
+        existsSync(join(repoDir, entry.name, "SKILL.md")));
+    if (hasTopLevelSkill) {
+        return repoDir;
+    }
+    // The repo itself may be a single skill.
+    if (existsSync(join(repoDir, "SKILL.md"))) {
+        return repoDir;
+    }
+    return undefined;
+}
+/** Collects directories that directly contain a SKILL.md, treating each as a leaf. */
+function findSkillDirs(root, maxDepth) {
+    const found = [];
+    const walk = (dir, depth) => {
+        const isSkill = existsSync(join(dir, "SKILL.md"));
+        if (isSkill) {
+            found.push(dir);
+            // A nested skill folder is a leaf. The scan root may itself be a skill
+            // while also containing sub-skills (e.g. gstack), so keep descending
+            // only from depth 0.
+            if (depth > 0) {
+                return;
+            }
+        }
+        if (depth >= maxDepth) {
+            return;
+        }
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || SKILL_SCAN_IGNORE.has(entry.name)) {
+                continue;
+            }
+            walk(join(dir, entry.name), depth + 1);
+        }
+    };
+    walk(root, 0);
+    return found;
+}
+function readSkillName(skillDir) {
+    try {
+        const content = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+        const match = content.match(/^\s*name:\s*(.+?)\s*$/m);
+        return match?.[1]?.replace(/^["']|["']$/g, "");
+    }
+    catch {
+        return undefined;
+    }
+}
+function sanitizeName(value) {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+}
+function linkOrCopy(target, destination) {
+    const absoluteTarget = resolve(target);
+    try {
+        symlinkSync(absoluteTarget, destination, process.platform === "win32" ? "junction" : "dir");
+    }
+    catch {
+        cpSync(absoluteTarget, destination, { recursive: true });
+    }
 }
 function getTargetDir(options) {
     if (options.targetDir) {

@@ -23,6 +23,20 @@ bunx github:sys-nat-ai/Natskill        # straight from GitHub, no npm needed
 This asks for confirmation, then clones every pinned skill repo into
 `./.natskill/skills` with live progress. Add `--yes` to skip the prompt.
 
+It then **registers the discovered skills for Claude Code** by linking each
+`SKILL.md`-bearing folder into `./.claude/skills/` (directory junctions on
+Windows, symlinks elsewhere — no copying, no admin needed). Claude Code reads
+`.claude/skills/<name>/SKILL.md`, so the skills become usable in that project
+immediately. Pass `--no-register` to skip this step.
+
+> **Scope:** registration targets Claude Code's `.claude/skills`. Codex
+> discovers skills from `.codex/skills` / `AGENTS.md`, and tools like
+> `get-shit-done` / `spec-kit` are used via their own CLIs — those are cloned
+> for reference but not auto-registered. One canonical skill-root is chosen per
+> repo (preferring `.claude/skills`, then `skills/`) and names are
+> de-duplicated, so the hundreds of mirror/translation copies some repos ship
+> are not registered.
+
 ## Install This Package
 
 ### From This Folder
