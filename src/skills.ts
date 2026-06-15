@@ -3,6 +3,7 @@ export type SkillStatus = "resolved" | "unresolved" | "disabled";
 export type SkillSource = {
   type: "git" | "local" | "unresolved";
   url?: string;
+  path?: string;
   ref?: string;
   verifiedOn: string;
 };
@@ -21,6 +22,26 @@ export type SkillEntry = {
 const verifiedOn = "2026-06-15";
 
 export const skills: readonly SkillEntry[] = [
+  {
+    id: "natskill-orchestrator",
+    name: "NatSkill Orchestrator",
+    aliases: [
+      "natskill-orchestrator",
+      "orchestrator",
+      "skill-router",
+      "skill selector",
+    ],
+    source: "skills/natskill-orchestrator",
+    sourceInfo: {
+      type: "local",
+      path: "skills/natskill-orchestrator",
+      verifiedOn,
+    },
+    status: "resolved",
+    installable: true,
+    notes:
+      "Local packaged skill that helps agents choose which installed NatSkill skill to use for each command.",
+  },
   {
     id: "ecc",
     name: "ECC",

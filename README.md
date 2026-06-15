@@ -7,6 +7,8 @@ filters for Codex/Claude-oriented skill tooling.
 
 When this package is installed into another project, it also installs the
 cloneable skill repositories into that project's `.natskill/skills` folder.
+It also installs a packaged local `natskill-orchestrator` skill that helps an
+agent choose which NatSkill skill should handle a user command.
 
 ## Install This Package
 
@@ -66,6 +68,7 @@ After install, the consuming project will contain:
 ```text
 .natskill/
   skills/
+    natskill-orchestrator/
     ecc/
     karpathy-skills/
     gstack/
@@ -108,11 +111,34 @@ console.log(unresolvedSkills.map((skill) => skill.name));
 Look up aliases too:
 
 ```ts
+const router = getSkill("orchestrator");
 const gsd = getSkill("gsd");
 const typoAlias = getSkill("Undestand-anyhting");
 
+console.log(router?.sourceInfo.type);
 console.log(gsd?.source);
 console.log(typoAlias?.id);
+```
+
+## Orchestrator Skill
+
+The local `natskill-orchestrator` skill is included inside this package and is
+copied during install. It is meant to be read by Codex or Claude before choosing
+which installed skill to use.
+
+Typical routing examples:
+
+- Planning, roadmap, phased execution: `get-shit-done`
+- Formal specs and acceptance criteria: `spec-kit`
+- Explanations and comprehension: `understand-anything`
+- Agent memory: `mem0`
+- Codex-specific work: `codex`
+- Claude Code references: `awesome-claude-code`
+
+After install, the skill instructions are available at:
+
+```text
+.natskill/skills/natskill-orchestrator/SKILL.md
 ```
 
 ## Scripts
@@ -173,7 +199,7 @@ Requirements:
 3. Do not add @natskill/skills as a dependency of the Natskill package itself.
 4. Do not commit or track node_modules.
 5. If a .gitignore exists, ensure node_modules/ and .natskill/ are ignored. If it does not exist, create one with both entries.
-6. Confirm the install created .natskill/skills in this project.
+6. Confirm the install created .natskill/skills in this project, including .natskill/skills/natskill-orchestrator/SKILL.md.
 7. If .natskill/skills was not created, run:
    bunx natskill-skills install
 8. Add a small import smoke test that imports:

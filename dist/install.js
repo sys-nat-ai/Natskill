@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { installableSkills, skills } from "./skills.js";
@@ -17,10 +17,6 @@ export function installSkills(options = {}) {
     const installed = [];
     const skipped = [];
     for (const skill of installableSkills) {
-        if (!isCloneableGitSkill(skill)) {
-            skipped.push(skill.id);
-            continue;
-        }
         const destination = join(targetDir, skill.id);
         if (existsSync(destination)) {
             if (!options.force) {
@@ -30,6 +26,16 @@ export function installSkills(options = {}) {
             if (!options.dryRun) {
                 rmSync(destination, { recursive: true, force: true });
             }
+        }
+        if (!isCloneableGitSkill(skill)) {
+            if (isInstallableLocalSkill(skill)) {
+                installLocalSkill(skill, destination, options.dryRun);
+                installed.push(skill.id);
+            }
+            else {
+                skipped.push(skill.id);
+            }
+            continue;
         }
         if (options.dryRun) {
             installed.push(skill.id);
@@ -76,6 +82,22 @@ function isCloneableGitSkill(skill) {
         typeof skill.sourceInfo.url === "string" &&
         typeof skill.sourceInfo.ref === "string");
 }
+function isInstallableLocalSkill(skill) {
+    return (skill.installable &&
+        skill.sourceInfo.type === "local" &&
+        typeof skill.sourceInfo.path === "string");
+}
+function installLocalSkill(skill, destination, dryRun = false) {
+    if (dryRun) {
+        return;
+    }
+    const sourcePath = resolve(packageRoot, skill.sourceInfo.path);
+    if (!existsSync(sourcePath)) {
+        throw new Error(`local skill source does not exist: ${sourcePath}`);
+    }
+    cpSync(sourcePath, destination, { recursive: true });
+    writeInstallMetadata(destination, skill);
+}
 function runGit(args) {
     const result = spawnSync("git", args, { stdio: "inherit" });
     if (result.status !== 0) {
@@ -87,7 +109,7 @@ function writeInstallMetadata(destination, skill) {
     const metadata = {
         id: skill.id,
         name: skill.name,
-        source: skill.sourceInfo.url,
+        source: skill.sourceInfo.url ?? skill.sourceInfo.path,
         ref: skill.sourceInfo.ref,
         installedAt: new Date().toISOString(),
     };

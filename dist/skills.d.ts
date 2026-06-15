@@ -2,6 +2,7 @@ export type SkillStatus = "resolved" | "unresolved" | "disabled";
 export type SkillSource = {
     type: "git" | "local" | "unresolved";
     url?: string;
+    path?: string;
     ref?: string;
     verifiedOn: string;
 };

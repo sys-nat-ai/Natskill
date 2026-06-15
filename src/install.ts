@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -43,11 +44,6 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
   const skipped: string[] = [];
 
   for (const skill of installableSkills) {
-    if (!isCloneableGitSkill(skill)) {
-      skipped.push(skill.id);
-      continue;
-    }
-
     const destination = join(targetDir, skill.id);
 
     if (existsSync(destination)) {
@@ -59,6 +55,16 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
       if (!options.dryRun) {
         rmSync(destination, { recursive: true, force: true });
       }
+    }
+
+    if (!isCloneableGitSkill(skill)) {
+      if (isInstallableLocalSkill(skill)) {
+        installLocalSkill(skill, destination, options.dryRun);
+        installed.push(skill.id);
+      } else {
+        skipped.push(skill.id);
+      }
+      continue;
     }
 
     if (options.dryRun) {
@@ -122,6 +128,36 @@ function isCloneableGitSkill(skill: SkillEntry): skill is SkillEntry & {
   );
 }
 
+function isInstallableLocalSkill(skill: SkillEntry): skill is SkillEntry & {
+  sourceInfo: { type: "local"; path: string; verifiedOn: string };
+} {
+  return (
+    skill.installable &&
+    skill.sourceInfo.type === "local" &&
+    typeof skill.sourceInfo.path === "string"
+  );
+}
+
+function installLocalSkill(
+  skill: SkillEntry & {
+    sourceInfo: { type: "local"; path: string; verifiedOn: string };
+  },
+  destination: string,
+  dryRun = false,
+): void {
+  if (dryRun) {
+    return;
+  }
+
+  const sourcePath = resolve(packageRoot, skill.sourceInfo.path);
+  if (!existsSync(sourcePath)) {
+    throw new Error(`local skill source does not exist: ${sourcePath}`);
+  }
+
+  cpSync(sourcePath, destination, { recursive: true });
+  writeInstallMetadata(destination, skill);
+}
+
 function runGit(args: string[]): void {
   const result = spawnSync("git", args, { stdio: "inherit" });
   if (result.status !== 0) {
@@ -134,7 +170,7 @@ function writeInstallMetadata(destination: string, skill: SkillEntry): void {
   const metadata = {
     id: skill.id,
     name: skill.name,
-    source: skill.sourceInfo.url,
+    source: skill.sourceInfo.url ?? skill.sourceInfo.path,
     ref: skill.sourceInfo.ref,
     installedAt: new Date().toISOString(),
   };

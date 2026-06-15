@@ -5,16 +5,16 @@ import {
   unresolvedSkills,
 } from "../src/index";
 
-if (skills.length !== 11) {
-  throw new Error(`expected 11 skills, received ${skills.length}`);
+if (skills.length !== 12) {
+  throw new Error(`expected 12 skills, received ${skills.length}`);
 }
 
 if (!getSkill("Undestand-anyhting")) {
   throw new Error("alias lookup failed");
 }
 
-if (resolvedSkills.length !== 11) {
-  throw new Error(`expected 11 resolved skills, received ${resolvedSkills.length}`);
+if (resolvedSkills.length !== 12) {
+  throw new Error(`expected 12 resolved skills, received ${resolvedSkills.length}`);
 }
 
 if (unresolvedSkills.length !== 0) {
