@@ -20,8 +20,8 @@
     }
   },
   "bin": {
-    "natskill": "./dist/cli.js",
-    "natskill-skills": "./dist/cli.js"
+    "natskill": "dist/cli.js",
+    "natskill-skills": "dist/cli.js"
   },
   "files": [
     "dist",
