@@ -155,16 +155,28 @@ function makeProgressReporter(): (event: InstallEvent) => void {
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
+  const first = argv[0];
+  const firstIsCommand = first !== undefined && !first.startsWith("-");
+  // No subcommand (e.g. `bunx github:owner/repo`) bootstraps an install.
+  // A leading flag (e.g. `--dry-run`) also implies the install command.
+  const command = firstIsCommand ? first : "install";
+  const flagStart = firstIsCommand ? 1 : 0;
+
   const parsed: ParsedArgs = {
-    command: argv[0] ?? "help",
+    command,
     force: false,
     dryRun: false,
     fromPostinstall: false,
     yes: false,
   };
 
-  for (let index = 1; index < argv.length; index += 1) {
+  for (let index = flagStart; index < argv.length; index += 1) {
     const arg = argv[index];
+
+    if (arg === "--help" || arg === "-h") {
+      parsed.command = "help";
+      continue;
+    }
 
     if (arg === "--target-dir") {
       parsed.targetDir = argv[index + 1];
