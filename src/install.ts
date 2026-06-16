@@ -19,9 +19,10 @@ export type InstallEvent =
   | { type: "clone-done"; id: string; index: number; total: number }
   | { type: "copy"; id: string; index: number; total: number }
   | { type: "skip"; id: string; reason: "exists" | "not-installable" }
-  | { type: "register-start" }
-  | { type: "registered"; name: string; from: string }
-  | { type: "register-done"; count: number; dir: string };
+  | { type: "register-start"; target: string }
+  | { type: "registered"; name: string; from: string; target: string }
+  | { type: "register-done"; count: number; dir: string; target: string }
+  | { type: "pointers-written"; files: string[] };
 
 export type InstallOptions = {
   targetDir?: string;
@@ -30,6 +31,10 @@ export type InstallOptions = {
   fromPostinstall?: boolean;
   /** Register discovered SKILL.md skills into the project's .claude/skills. Default true. */
   register?: boolean;
+  /** Register discovered SKILL.md skills into the project's .codex/skills. Default true. */
+  registerCodex?: boolean;
+  /** Write the orchestrator pointer block into CLAUDE.md / AGENTS.md. Default true. */
+  writePointers?: boolean;
   onEvent?: (event: InstallEvent) => void;
 };
 
@@ -39,8 +44,14 @@ export type InstallResult = {
   targetDir: string;
   /** Skill names registered into .claude/skills for Claude Code. */
   registered: string[];
+  /** Skill names registered into .codex/skills for Codex. */
+  registeredCodex: string[];
   /** Absolute path to the .claude/skills directory used, when registration ran. */
   claudeSkillsDir?: string;
+  /** Absolute path to the .codex/skills directory used, when registration ran. */
+  codexSkillsDir?: string;
+  /** Absolute paths of pointer files (CLAUDE.md / AGENTS.md) written or updated. */
+  pointerFiles: string[];
 };
 
 const packageRoot = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -55,6 +66,8 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
       skipped: skills.map((skill) => skill.id),
       targetDir,
       registered: [],
+      registeredCodex: [],
+      pointerFiles: [],
     };
   }
 
@@ -117,14 +130,45 @@ export function installSkills(options: InstallOptions = {}): InstallResult {
   }
 
   let registered: string[] = [];
+  let registeredCodex: string[] = [];
   let claudeSkillsDir: string | undefined;
+  let codexSkillsDir: string | undefined;
+  let pointerFiles: string[] = [];
 
-  if (!options.dryRun && options.register !== false) {
-    claudeSkillsDir = join(getProjectRoot(options), ".claude", "skills");
-    registered = registerClaudeSkills(targetDir, claudeSkillsDir, emit);
+  if (!options.dryRun) {
+    const projectRoot = getProjectRoot(options);
+    const wantsClaude = options.register !== false;
+    const wantsCodex = options.registerCodex !== false;
+
+    if (wantsClaude || wantsCodex) {
+      const folders = collectSkillFolders(targetDir);
+
+      if (wantsClaude) {
+        claudeSkillsDir = join(projectRoot, ".claude", "skills");
+        registered = linkSkillsInto(folders, claudeSkillsDir, "Claude Code", emit);
+      }
+
+      if (wantsCodex) {
+        codexSkillsDir = join(projectRoot, ".codex", "skills");
+        registeredCodex = linkSkillsInto(folders, codexSkillsDir, "Codex", emit);
+      }
+    }
+
+    if (options.writePointers !== false) {
+      pointerFiles = writePointerFiles(projectRoot, emit);
+    }
   }
 
-  return { installed, skipped, targetDir, registered, claudeSkillsDir };
+  return {
+    installed,
+    skipped,
+    targetDir,
+    registered,
+    registeredCodex,
+    claudeSkillsDir,
+    codexSkillsDir,
+    pointerFiles,
+  };
 }
 
 function getProjectRoot(options: InstallOptions): string {
@@ -146,20 +190,16 @@ const SKILL_ROOT_CANDIDATES = [
 const SKILL_SCAN_MAX_DEPTH = 3;
 const SKILL_SCAN_IGNORE = new Set([".git", "node_modules", ".github"]);
 
-/**
- * Links every distinct SKILL.md-bearing folder from the installed repos into
- * `.claude/skills` so Claude Code discovers them. One canonical skill-root is
- * chosen per repo to avoid the mirror/translation copies many repos ship.
- */
-function registerClaudeSkills(
-  targetDir: string,
-  claudeSkillsDir: string,
-  emit: (event: InstallEvent) => void,
-): string[] {
-  emit({ type: "register-start" });
-  mkdirSync(claudeSkillsDir, { recursive: true });
+type SkillFolder = { name: string; dir: string; from: string };
 
-  const registered: string[] = [];
+/**
+ * Discovers every distinct SKILL.md-bearing folder across the installed repos.
+ * One canonical skill-root is chosen per repo to avoid the mirror/translation
+ * copies many repos ship, and names are de-duplicated. The result can be linked
+ * into any number of destinations (e.g. .claude/skills and .codex/skills).
+ */
+function collectSkillFolders(targetDir: string): SkillFolder[] {
+  const folders: SkillFolder[] = [];
   const usedNames = new Set<string>();
 
   for (const skill of installableSkills) {
@@ -185,22 +225,104 @@ function registerClaudeSkills(
         continue;
       }
 
-      const destination = join(claudeSkillsDir, name);
-      if (existsSync(destination)) {
-        // Never clobber a skill the user already has.
-        usedNames.add(name);
-        continue;
-      }
-
-      linkOrCopy(skillDir, destination);
       usedNames.add(name);
-      registered.push(name);
-      emit({ type: "registered", name, from: skill.id });
+      folders.push({ name, dir: skillDir, from: skill.id });
     }
   }
 
-  emit({ type: "register-done", count: registered.length, dir: claudeSkillsDir });
+  return folders;
+}
+
+/**
+ * Links the discovered skill folders into a destination directory (directory
+ * junctions on Windows, symlinks elsewhere, copy as fallback). Existing skills
+ * are never clobbered.
+ */
+function linkSkillsInto(
+  folders: SkillFolder[],
+  destDir: string,
+  target: string,
+  emit: (event: InstallEvent) => void,
+): string[] {
+  emit({ type: "register-start", target });
+  mkdirSync(destDir, { recursive: true });
+
+  const registered: string[] = [];
+
+  for (const folder of folders) {
+    const destination = join(destDir, folder.name);
+    if (existsSync(destination)) {
+      // Never clobber a skill the user already has.
+      continue;
+    }
+
+    linkOrCopy(folder.dir, destination);
+    registered.push(folder.name);
+    emit({ type: "registered", name: folder.name, from: folder.from, target });
+  }
+
+  emit({ type: "register-done", count: registered.length, dir: destDir, target });
   return registered;
+}
+
+const POINTER_START = "<!-- natskill:start -->";
+const POINTER_END = "<!-- natskill:end -->";
+
+function pointerBlock(): string {
+  return [
+    POINTER_START,
+    "## NatSkill skills",
+    "",
+    "Agent skills are installed in `.natskill/skills/` and registered for Claude",
+    "Code (`.claude/skills/`) and Codex (`.codex/skills/`).",
+    "",
+    "Before acting on a broad or multi-step request, read",
+    "`.natskill/skills/natskill-orchestrator/SKILL.md` and use it to route to the",
+    "most relevant installed skill.",
+    POINTER_END,
+  ].join("\n");
+}
+
+/**
+ * Writes an idempotent managed block into CLAUDE.md and AGENTS.md at the project
+ * root so Claude Code and Codex are pointed at the orchestrator skill. Content
+ * outside the markers is preserved.
+ */
+function writePointerFiles(
+  projectRoot: string,
+  emit: (event: InstallEvent) => void,
+): string[] {
+  const block = pointerBlock();
+  const written: string[] = [];
+
+  for (const fileName of ["CLAUDE.md", "AGENTS.md"]) {
+    const filePath = join(projectRoot, fileName);
+    let next: string;
+
+    if (existsSync(filePath)) {
+      const current = readFileSync(filePath, "utf8");
+      const startIndex = current.indexOf(POINTER_START);
+      const endIndex = current.indexOf(POINTER_END);
+
+      if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+        next =
+          current.slice(0, startIndex) +
+          block +
+          current.slice(endIndex + POINTER_END.length);
+      } else {
+        const separator = current.endsWith("\n") ? "\n" : "\n\n";
+        next = `${current}${separator}${block}\n`;
+      }
+    } else {
+      next = `${block}\n`;
+    }
+
+    writeFileSync(filePath, next);
+    written.push(filePath);
+  }
+
+  emit({ type: "pointers-written", files: written });
+  return written;
 }
 
 function findRepoSkillRoot(repoDir: string): string | undefined {

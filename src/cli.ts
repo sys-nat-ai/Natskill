@@ -11,6 +11,8 @@ type ParsedArgs = {
   fromPostinstall: boolean;
   yes: boolean;
   register: boolean;
+  registerCodex: boolean;
+  writePointers: boolean;
 };
 
 main();
@@ -52,6 +54,8 @@ async function main(): Promise<void> {
       dryRun: args.dryRun,
       fromPostinstall: args.fromPostinstall,
       register: args.register,
+      registerCodex: args.registerCodex,
+      writePointers: args.writePointers,
       onEvent,
     });
 
@@ -63,6 +67,18 @@ async function main(): Promise<void> {
     if (result.registered.length > 0 && result.claudeSkillsDir) {
       console.log(
         `[natskill] Registered ${result.registered.length} skills for Claude Code in ${result.claudeSkillsDir}.`,
+      );
+    }
+
+    if (result.registeredCodex.length > 0 && result.codexSkillsDir) {
+      console.log(
+        `[natskill] Registered ${result.registeredCodex.length} skills for Codex in ${result.codexSkillsDir}.`,
+      );
+    }
+
+    if (result.pointerFiles.length > 0) {
+      console.log(
+        `[natskill] Wrote orchestrator pointer to ${result.pointerFiles.join(", ")}.`,
       );
     }
 
@@ -163,13 +179,19 @@ function makeProgressReporter(): (event: InstallEvent) => void {
 
     if (event.type === "register-start") {
       clearLine();
-      console.log("Registering skills for Claude Code (.claude/skills)…");
+      console.log(`Registering skills for ${event.target}…`);
       return;
     }
 
     if (event.type === "register-done") {
       clearLine();
-      console.log(`✓ registered ${event.count} skills in ${event.dir}`);
+      console.log(`✓ registered ${event.count} skills for ${event.target} in ${event.dir}`);
+      return;
+    }
+
+    if (event.type === "pointers-written") {
+      clearLine();
+      console.log(`✓ wrote orchestrator pointer to ${event.files.join(", ")}`);
     }
   };
 }
@@ -189,6 +211,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     fromPostinstall: false,
     yes: false,
     register: true,
+    registerCodex: true,
+    writePointers: true,
   };
 
   for (let index = flagStart; index < argv.length; index += 1) {
@@ -229,6 +253,16 @@ function parseArgs(argv: string[]): ParsedArgs {
       parsed.register = false;
       continue;
     }
+
+    if (arg === "--no-codex") {
+      parsed.registerCodex = false;
+      continue;
+    }
+
+    if (arg === "--no-pointers") {
+      parsed.writePointers = false;
+      continue;
+    }
   }
 
   return parsed;
@@ -248,7 +282,13 @@ Options:
   --force              Replace existing skill folders.
   --dry-run            Show what would be installed without cloning.
   --yes, -y            Skip the confirmation prompt (assume yes).
-  --no-register        Do not register skills into .claude/skills.
+  --no-register        Do not register skills into .claude/skills (Claude Code).
+  --no-codex           Do not register skills into .codex/skills (Codex).
+  --no-pointers        Do not write the orchestrator pointer to CLAUDE.md/AGENTS.md.
+
+By default, install also registers the discovered skills for Claude Code
+(.claude/skills) and Codex (.codex/skills), and writes an orchestrator pointer
+block into CLAUDE.md and AGENTS.md.
 
 In an interactive terminal, install asks for confirmation and shows live
 progress while each repository is cloned. Use --yes to skip the prompt

@@ -23,19 +23,26 @@ bunx github:sys-nat-ai/Natskill        # straight from GitHub, no npm needed
 This asks for confirmation, then clones every pinned skill repo into
 `./.natskill/skills` with live progress. Add `--yes` to skip the prompt.
 
-It then **registers the discovered skills for Claude Code** by linking each
-`SKILL.md`-bearing folder into `./.claude/skills/` (directory junctions on
-Windows, symlinks elsewhere — no copying, no admin needed). Claude Code reads
-`.claude/skills/<name>/SKILL.md`, so the skills become usable in that project
-immediately. Pass `--no-register` to skip this step.
+It then **registers the discovered skills** by linking each `SKILL.md`-bearing
+folder into both `./.claude/skills/` (Claude Code) and `./.codex/skills/`
+(Codex) — directory junctions on Windows, symlinks elsewhere, no copying, no
+admin needed. Both tools read `<dir>/skills/<name>/SKILL.md`, so the skills
+become usable in that project immediately. Finally it writes an **orchestrator
+pointer** block into `CLAUDE.md` and `AGENTS.md` telling the agent to route via
+`natskill-orchestrator`.
 
-> **Scope:** registration targets Claude Code's `.claude/skills`. Codex
-> discovers skills from `.codex/skills` / `AGENTS.md`, and tools like
-> `get-shit-done` / `spec-kit` are used via their own CLIs — those are cloned
-> for reference but not auto-registered. One canonical skill-root is chosen per
-> repo (preferring `.claude/skills`, then `skills/`) and names are
-> de-duplicated, so the hundreds of mirror/translation copies some repos ship
-> are not registered.
+Opt out of any step: `--no-register` (Claude), `--no-codex` (Codex),
+`--no-pointers` (the CLAUDE.md/AGENTS.md block).
+
+> **Scope:** one canonical skill-root is chosen per repo (preferring
+> `.claude/skills`, then `skills/`, then `.codex/skills`, then `.agents/skills`,
+> or the repo root for top-level/single skills) and names are de-duplicated, so
+> the hundreds of mirror/translation copies some repos ship are not registered.
+> Repos that are libraries or CLIs rather than skill collections
+> (e.g. `mem0`, `spec-kit`, the `codex` repo itself) are cloned for reference
+> but contribute few or no registered skills. The pointer block is written
+> idempotently between `<!-- natskill:start -->` / `<!-- natskill:end -->`
+> markers, preserving any other content in those files.
 
 ## Install This Package
 
